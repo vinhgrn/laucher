@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  }
+  body, html {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    padding-bottom: 3px;
+  }
+  .homebar-root {
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    pointer-events: auto;
+  }
+  .ram-alert-pill {
+    position: absolute;
+    bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px 12px;
+    border-radius: 20px;
+    background: rgba(18, 18, 20, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: -0.1px;
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+    pointer-events: none;
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ram-alert-pill.show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  .ram-alert-pill.warning {
+    border: 1px solid rgba(255, 214, 10, 0.4);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 10px rgba(255, 214, 10, 0.2);
+  }
+  .ram-alert-pill.critical {
+    border: 1px solid rgba(255, 69, 58, 0.5);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 14px rgba(255, 69, 58, 0.3);
+  }
+  .ram-track-row {
+    width: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+    transition: opacity 0.3s ease;
+  }
+  .ram-track {
+    flex: 1;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);
+  }
+  .ram-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #30d158, #34c759);
+    opacity: 0.35;
+    transition: width 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease, background 0.4s ease;
+  }
+  .ram-badge {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9.5px;
+    font-weight: 900;
+    line-height: 1;
+    background: rgba(48, 209, 88, 0.22);
+    color: #30d158;
+    border: 1px solid rgba(48, 209, 88, 0.4);
+    transition: all 0.35s ease;
+    flex-shrink: 0;
+  }
+  .ram-badge.yellow {
+    background: rgba(255, 214, 10, 0.3);
+    color: #ffd60a;
+    border-color: rgba(255, 214, 10, 0.65);
+    box-shadow: 0 0 6px rgba(255, 214, 10, 0.35);
+  }
+  .ram-badge.red {
+    background: rgba(255, 69, 58, 0.35);
+    color: #ff453a;
+    border-color: rgba(255, 69, 58, 0.8);
+    box-shadow: 0 0 8px rgba(255, 69, 58, 0.5);
+    animation: badgePulse 1.2s infinite ease-in-out;
+  }
+  @keyframes badgePulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.18); opacity: 0.75; }
+  }
+  .bar-container {
+    width: 200px;
+    height: 18px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+  }
+  .home-pill {
+    width: 140px;
+    height: 4.5px;
+    background: rgba(255, 255, 255, 0.78);
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 1px rgba(0,0,0,0.6);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .bar-container:hover .home-pill {
+    background: rgba(255, 255, 255, 1.0);
+    width: 160px;
+    height: 5.5px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 10px rgba(255, 255, 255, 0.45);
+  }
+  .bar-container:active .home-pill {
+    transform: scale(0.94);
+    background: rgba(255, 255, 255, 0.9);
+  }
+</style>
+</head>
+<body>
+  <div class="homebar-root">
+    <div class="ram-alert-pill" id="ramAlertPill">
+      <span id="alertIcon">!</span>
+      <span id="alertText">Bộ nhớ RAM</span>
+    </div>
+    <div class="ram-track-row" id="ramTrackRow" title="Mức sử dụng RAM thực tế">
+      <div class="ram-track">
+        <div class="ram-fill" id="ramFill"></div>
+      </div>
+      <div class="ram-badge" id="ramBadge">!</div>
+    </div>
+    <div class="bar-container" id="bar">
+      <div class="home-pill"></div>
+    </div>
+  </div>
+  <script>
+    const bar = document.getElementById('bar');
+    const ramFill = document.getElementById('ramFill');
+    const ramBadge = document.getElementById('ramBadge');
+    const ramAlertPill = document.getElementById('ramAlertPill');
+    const alertText = document.getElementById('alertText');
+    let alertHideTimer = null;
+    function showAlert(level, text) {
+      if (!ramAlertPill) return;
+      clearTimeout(alertHideTimer);
+      alertText.textContent = text;
+      ramAlertPill.className = 'ram-alert-pill show ' + (level === 'critical' ? 'critical' : level === 'high' || level === 'warning' ? 'warning' : '');
+      alertHideTimer = setTimeout(() => {
+        ramAlertPill.classList.remove('show');
+      }, 4200);
+    }
+    if (window.homebarAPI) {
+      if (typeof window.homebarAPI.onRamUpdate === 'function') {
+        window.homebarAPI.onRamUpdate((stats) => {
+          if (!stats || typeof stats.ramPct !== 'number') return;
+          const pct = Math.max(1, Math.min(100, stats.ramPct));
+          ramFill.style.width = pct + '%';
+          if (pct < 65) {
+            ramFill.style.background = 'linear-gradient(90deg, #30d158, #34c759)';
+            ramFill.style.opacity = '0.35';
+            ramBadge.className = 'ram-badge';
+          } else if (pct < 85) {
+            ramFill.style.background = 'linear-gradient(90deg, #ffd60a, #ff9f0a)';
+            ramFill.style.opacity = '0.72';
+            ramBadge.className = 'ram-badge yellow';
+          } else {
+            ramFill.style.background = 'linear-gradient(90deg, #ff453a, #ff2d55)';
+            ramFill.style.opacity = '0.98';
+            ramBadge.className = 'ram-badge red';
+          }
+        });
+      }
+      if (typeof window.homebarAPI.onRamAlert === 'function') {
+        window.homebarAPI.onRamAlert((alertData) => {
+          if (!alertData) return;
+          showAlert(alertData.level, alertData.message);
+        });
+      }
+    }
+    let startY = 0;
+    let startTime = 0;
+    let isHolding = false;
+    let holdTimeout = null;
+    bar.addEventListener('mousedown', (e) => {
+      startY = e.clientY;
+      startTime = Date.now();
+      isHolding = false;
+      holdTimeout = setTimeout(() => {
+        isHolding = true;
+        if (window.homebarAPI) window.homebarAPI.triggerSwitcher();
+      }, 350);
+    });
+    window.addEventListener('mouseup', (e) => {
+      clearTimeout(holdTimeout);
+      const dy = startY - e.clientY;
+      if (!isHolding) {
+        if (window.homebarAPI) {
+          if (dy > 8) {
+            window.homebarAPI.triggerHome();
+          } else {
+            window.homebarAPI.triggerHome();
+          }
+        }
+      }
+      isHolding = false;
+    });
+    bar.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (window.homebarAPI) window.homebarAPI.triggerSwitcher();
+    });
+  </script>
+</body>
+</html>

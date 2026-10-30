@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AeroIOS Windows Launcher</title>
+  <link rel="stylesheet" href="styles.css">
+  <style id="safe-smooth-tuning">
+    :root {
+      --ios-smooth-curve: cubic-bezier(0.22, 1, 0.36, 1);
+      --ios-island-curve: cubic-bezier(0.25, 1.12, 0.38, 1);
+    }
+    /* Làm mượt nét chữ và chống giật ảnh khi kéo */
+    body {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    img {
+      -webkit-user-drag: none;
+      user-select: none;
+    }
+    /* Giữ nguyên toàn bộ kích thước & vị trí của Dynamic Island từ styles.css,
+       chỉ làm mượt đường cong chuyển động (Timing Function) */
+    .dynamic-island {
+      transition-timing-function: var(--ios-island-curve);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    .di-compact,
+    .di-expanded {
+      transition-timing-function: var(--ios-smooth-curve);
+    }
+    /* Làm mượt chuyển trang và các bảng nổi mà không đụng tới transform gốc */
+    .homescreen-pages,
+    .shade-panel,
+    .spotlight-box,
+    .folder-modal-card,
+    .desktop-modal-window,
+    .ios-anim-proxy,
+    .instant-launch-overlay,
+    .switcher-deck {
+      transition-timing-function: var(--ios-smooth-curve);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    /* Khử lag khi cuộn danh sách nhiều ứng dụng (#appsGrid):
+       Không dùng contain hay content-visibility gây vỡ khung,
+       chỉ dùng backface-visibility để đẩy việc vẽ icon sang GPU */
+    #appsGrid,
+    #folderModalGrid,
+    #desktopFilesScroller {
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
+    }
+    #appsGrid > *,
+    #dockShelf > *,
+    #folderModalGrid > *,
+    #desktopFilesGrid > * {
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      transition-timing-function: var(--ios-smooth-curve);
+    }
+    /* Khi đang lăn chuột cuộn nhanh trên lưới nhiều app, tạm nghỉ hover 80ms để đạt 120fps */
+    body.aero-scrolling-active #appsGrid > * {
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="dark-mode">
+  <div class="wallpaper-container" id="wallpaperContainer">
+    <div class="wallpaper" id="wallpaper"></div>
+    <div class="wallpaper-overlay"></div>
+  </div>
+  <div class="night-light-overlay" id="nightLightOverlay"></div>
+  <div class="top-drag-handle" id="topDragHandle" title="Vuốt xuống để mở Cài đặt nhanh Android">
+    <div class="drag-handle-pill"></div>
+  </div>
+  <header class="status-bar" id="statusBar">
+    <div class="status-left" id="statusLeftTrigger" title="Chạm để mở Cài đặt nhanh">
+      <span class="status-carrier">Windows</span>
+      <span class="status-date" id="statusDate">Thứ Sáu, 30 Th10</span>
+    </div>
+    <div class="dynamic-island-wrapper">
+      <div class="dynamic-island" id="dynamicIsland">
+        <div class="di-compact" id="diCompact">
+          <div class="di-left">
+            <span class="di-dot live"></span>
+            <div class="di-wave-bars" id="diWaveBars">
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <span class="di-text" id="diSummary">CPU 12%</span>
+          </div>
+          <div class="di-time" id="statusTime">09:41</div>
+          <div class="di-right">
+            <span class="di-battery-text" id="diBatteryText">100%</span>
+            <div class="di-battery-icon"><div class="di-battery-level" id="diBatteryLevel" style="width: 100%;"></div></div>
+          </div>
+        </div>
+        <div class="di-expanded" id="diExpanded">
+          <div class="di-expanded-header">
+            <div class="di-system-tag">
+              <span class="di-apple-logo"></span>
+              <span>AeroIOS Core</span>
+            </div>
+            <div class="di-close-btn" id="diCloseBtn">✕</div>
+          </div>
+          <div class="di-metrics-grid">
+            <div class="di-metric-card">
+              <span class="metric-label">CPU</span>
+              <div class="metric-val-row">
+                <span class="metric-value" id="diCpuVal">12%</span>
+                <div class="mini-bar"><div class="mini-bar-fill" id="diCpuBar" style="width: 12%;"></div></div>
+              </div>
+            </div>
+            <div class="di-metric-card">
+              <span class="metric-label">RAM</span>
+              <div class="metric-val-row">
+                <span class="metric-value" id="diRamVal">45%</span>
+                <div class="mini-bar"><div class="mini-bar-fill ram" id="diRamBar" style="width: 45%;"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="di-quick-actions">
+            <button class="di-btn" id="diBtnSwitcher">
+              <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span>Đa nhiệm</span>
+            </button>
+            <button class="di-btn" id="diBtnSplit">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/><line x1="12" y1="3" x2="12" y2="21" stroke="currentColor" stroke-width="2"/></svg>
+              <span>Chia màn hình</span>
+            </button>
+            <button class="di-btn" id="diBtnSpotlight">
+              <svg viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span>Tìm kiếm</span>
+            </button>
+            <button class="di-btn danger" id="diBtnExit">
+              <svg viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span>Thoát Shell</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="status-right" id="statusRight">
+      <div class="status-icon wifi" id="statusWifiIcon" title="Wi-Fi">
+        <svg viewBox="0 0 24 24"><path d="M12 18h.01M5 12.5a11 11 0 0114 0M8.5 15.5a6 6 0 017 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="status-battery" id="statusBattery">
+        <span class="battery-pct" id="batteryPct">100%</span>
+        <div class="battery-shell">
+          <div class="battery-bar" id="batteryBar" style="width: 100%;"></div>
+          <span class="battery-bolt" id="batteryBolt">⚡</span>
+        </div>
+      </div>
+      <button class="control-center-trigger" id="ccTrigger" title="Vuốt xuống / Bấm để mở Cài đặt nhanh">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+  <div class="android-shade" id="androidShade">
+    <div class="shade-backdrop" id="shadeBackdrop"></div>
+    <div class="shade-panel" id="shadePanel">
+      <div class="shade-header">
+        <div class="shade-clock-group">
+          <span class="shade-clock" id="shadeClock">09:41</span>
+          <span class="shade-date" id="shadeDate">Thứ Sáu, 30 Tháng 10</span>
+        </div>
+        <div class="shade-header-actions">
+          <button class="shade-action-btn" id="shadeBtnSettings" title="Cài đặt Windows">
+            <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+          <button class="shade-action-btn danger" id="shadeBtnPower" title="Khôi phục Windows Taskbar & Thoát">
+            <svg viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <button class="shade-action-btn close" id="shadeBtnClose" title="Đóng">✕</button>
+        </div>
+      </div>
+      <div class="shade-tiles-grid">
+        <div class="shade-tile active" id="tileWifi">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 18h.01M5 12.5a11 11 0 0114 0M8.5 15.5a6 6 0 017 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="tile-text">
+            <span class="tile-label">Internet / Wi-Fi</span>
+            <span class="tile-sub" id="tileWifiSub">Đang kiểm tra</span>
+          </div>
+          <button class="tile-gear" id="tileWifiSettings" title="Cài đặt Wi-Fi">›</button>
+        </div>
+        <div class="shade-tile active" id="tileBt">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24"><path d="M7 7l10 10-5 5V2l5 5L7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="tile-text">
+            <span class="tile-label">Bluetooth</span>
+            <span class="tile-sub" id="tileBtSub">Đang bật</span>
+          </div>
+          <button class="tile-gear" id="tileBtSettings" title="Cài đặt Bluetooth">›</button>
+        </div>
+        <div class="shade-tile active" id="tileDarkMode">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2"/></svg>
+          </div>
+          <div class="tile-text">
+            <span class="tile-label">Giao diện tối</span>
+            <span class="tile-sub" id="tileDarkSub">Bật</span>
+          </div>
+        </div>
+        <div class="shade-tile" id="tileAirplane">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="tile-text">
+            <span class="tile-label">Chế độ máy bay</span>
+            <span class="tile-sub" id="tileAirplaneSub">Tắt</span>
+          </div>
+        </div>
+        <div class="shade-tile" id="tileNightLight">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="2"/></svg>
+          </div>
+          <div class="tile-text">
+            <span class="tile-label">Ánh sáng đêm</span>
+            <span class="tile-sub" id="tileNightSub">Dịu mắt</span>
+          </div>
+        </div>
+        <div class="shade-tile" id="tileHotspot">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="2"/><path d="M16.24 7.76a6 6 0 010 8.49M7.76 16.24a6 6 0 010-8.49M19.07 4.93a10 10 0 010 14.14M4.93 19.07a10 10 0 010-14.14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="tile-text">
+            <span class="tile-label">Điểm phát sóng</span>
+            <span class="tile-sub" id="tileHotspotSub">Hotspot</span>
+          </div>
+        </div>
+        <div class="shade-tile active" id="tileSound">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07" stroke="currentColor" stroke-width="2"/></svg>
+          </div>
+          <div class="tile-text">
+            <span class="tile-label">Cấu hình chuông</span>
+            <span class="tile-sub" id="tileSoundSub">Âm thanh</span>
+          </div>
+        </div>
+        <div class="shade-tile" id="tileDnd">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" stroke="currentColor" stroke-width="2"/></svg>
+          </div>
+          <div class="tile-text">
+            <span class="tile-label">Không làm phiền</span>
+            <span class="tile-sub" id="tileDndSub">Tắt</span>
+          </div>
+        </div>
+      </div>
+      <div class="shade-sliders-row">
+        <div class="shade-slider-card">
+          <div class="shade-slider-icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="2"/></svg>
+          </div>
+          <input type="range" min="20" max="100" value="90" class="shade-slider" id="shadeBrightSlider">
+        </div>
+        <div class="shade-slider-card">
+          <div class="shade-slider-icon">
+            <svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07" stroke="currentColor" stroke-width="2"/></svg>
+          </div>
+          <input type="range" min="0" max="100" value="80" class="shade-slider" id="shadeVolSlider">
+        </div>
+      </div>
+      <div class="shade-notifications">
+        <div class="notifications-header">
+          <span>Thông báo hệ thống</span>
+          <button class="notif-clear-btn" id="notifClearBtn">Xoá tất cả</button>
+        </div>
+        <div class="notif-cards-list" id="notifCardsList">
+          <p class="native-control-note">Thông báo tài nguyên của launcher xuất hiện tại Dynamic Island. Chưa đồng bộ thông báo của các ứng dụng Windows.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="spotlight-overlay" id="spotlightOverlay">
+    <div class="spotlight-backdrop" id="spotlightBackdrop"></div>
+    <div class="spotlight-box">
+      <div class="spotlight-input-row">
+        <svg class="search-icon" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+        <input type="text" class="spotlight-input" id="spotlightInput" placeholder="Tìm kiếm ứng dụng, cài đặt..." autofocus>
+        <button class="spotlight-esc" id="spotlightClose">ESC</button>
+      </div>
+      <div class="spotlight-results" id="spotlightResults"></div>
+    </div>
+  </div>
+  <main class="homescreen-wrapper" id="homescreenWrapper">
+    <div class="homescreen-pages" id="homescreenPages">
+      <section class="page-view widgets-page" id="pageWidgets">
+        <div class="widgets-container">
+          <div class="widget-card widget-clock">
+            <div class="analog-clock">
+              <div class="clock-face">
+                <div class="clock-hour" id="clockHour"></div>
+                <div class="clock-min" id="clockMin"></div>
+                <div class="clock-sec" id="clockSec"></div>
+                <div class="clock-dot"></div>
+              </div>
+            </div>
+            <div class="clock-info">
+              <span class="clock-city">Hà Nội</span>
+              <span class="clock-digital" id="clockDigital">09:41</span>
+              <span class="clock-day" id="clockDay">Thứ sáu</span>
+            </div>
+          </div>
+          <div class="widget-card widget-perf">
+            <div class="widget-header">
+              <span class="widget-title">Hệ thống Windows</span>
+              <span class="widget-badge" id="widgetCpuBadge">Mượt mà</span>
+            </div>
+            <div class="gauges-row">
+              <div class="gauge-item">
+                <div class="circular-progress">
+                  <svg viewBox="0 0 36 36">
+                    <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                    <path class="circle-fill cpu-circle" id="cpuCircle" stroke-dasharray="12, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                  </svg>
+                  <div class="gauge-text" id="widgetCpuText">12%</div>
+                </div>
+                <span class="gauge-label">CPU</span>
+              </div>
+              <div class="gauge-item">
+                <div class="circular-progress">
+                  <svg viewBox="0 0 36 36">
+                    <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                    <path class="circle-fill ram-circle" id="ramCircle" stroke-dasharray="45, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                  </svg>
+                  <div class="gauge-text" id="widgetRamText">45%</div>
+                </div>
+                <span class="gauge-label">RAM</span>
+              </div>
+            </div>
+            <div class="perf-stats-footer" id="widgetRamDetails">
+              Đã dùng 6.8 GB / 15.6 GB
+            </div>
+          </div>
+          <div class="widget-card widget-cal">
+            <div class="cal-header">
+              <span class="cal-month-title" id="calMonthTitle">THÁNG 10</span>
+              <span class="cal-today-num" id="calTodayNum">30</span>
+            </div>
+            <div class="cal-agenda">
+              <div class="agenda-item">
+                <span class="agenda-time">Toàn ngày</span>
+                <span class="agenda-title">AeroIOS Launcher Active</span>
+              </div>
+              <div class="agenda-item muted">
+                <span class="agenda-time">Toàn màn hình</span>
+                <span class="agenda-title">Tối ưu mượt mà mọi ứng dụng</span>
+              </div>
+            </div>
+          </div>
+          <div class="widget-card widget-notes">
+            <div class="widget-header">
+              <span class="widget-title">Ghi chú nhanh</span>
+              <span class="widget-icon">📝</span>
+            </div>
+            <textarea class="notes-input" id="notesInput" placeholder="Ghi chú nhanh tại đây..."></textarea>
+          </div>
+        </div>
+      </section>
+      <section class="page-view apps-page" id="pageApps1">
+        <div class="category-tabs" id="categoryTabs">
+          <button class="cat-pill active" data-cat="all">Tất cả</button>
+          <button class="cat-pill" data-cat="folders">📁 Nhóm Thư mục</button>
+          <button class="cat-pill" data-cat="Productivity">Văn phòng</button>
+          <button class="cat-pill" data-cat="Developer Tools">Lập trình</button>
+          <button class="cat-pill" data-cat="Browsers & Web">Trình duyệt</button>
+          <button class="cat-pill" data-cat="Media & Creative">Đồ hoạ & Media</button>
+          <button class="cat-pill" data-cat="Gaming">🎮 Trò chơi</button>
+          <button class="cat-pill" data-cat="Utilities & System">Hệ thống</button>
+          <button class="cat-pill" data-cat="Applications">📦 Khác</button>
+        </div>
+        <div class="apps-grid" id="appsGrid">
+        </div>
+      </section>
+    </div>
+    <div class="page-indicators" id="pageIndicators">
+      <span class="page-dot" data-page="0"></span>
+      <span class="page-dot active" data-page="1"></span>
+    </div>
+  </main>
+  <footer class="dock-container" id="dockContainer">
+    <div class="dock-shelf" id="dockShelf">
+    </div>
+  </footer>
+  <div class="switcher-overlay" id="switcherOverlay">
+    <div class="switcher-backdrop" id="switcherBackdrop"></div>
+    <div class="switcher-header">
+      <div class="switcher-title-wrap">
+        <h2>Đa nhiệm Windows</h2>
+        <span class="switcher-count" id="switcherCount">0 ứng dụng đang mở</span>
+      </div>
+      <div class="switcher-mode-pills">
+        <button class="mode-pill active" id="btnModeDeck">📱 Danh sách thẻ</button>
+        <button class="mode-pill" id="btnModeSplit">◫ Chia màn hình</button>
+      </div>
+      <div class="switcher-actions">
+        <button class="switcher-btn close-all" id="btnSwitcherCloseAll">Thu nhỏ tất cả</button>
+        <button class="switcher-btn" id="btnSwitcherClose">✕</button>
+      </div>
+    </div>
+    <div class="switcher-deck-scroller" id="switcherDeckScroller">
+      <div class="switcher-deck" id="switcherDeck">
+      </div>
+    </div>
+    <div class="switcher-split-view" id="switcherSplitView" style="display: none;">
+      <div class="split-setup-container">
+        <div class="split-section-title">1. Chọn kiểu chia màn hình:</div>
+        <div class="split-type-pills" id="splitTypePills">
+          <button class="split-pill active" data-type="2">Chia đôi (2 Cửa sổ)</button>
+          <button class="split-pill" data-type="3">Chia ba (3 Cửa sổ)</button>
+          <button class="split-pill" data-type="4">Chia bốn (4 Cửa sổ 2x2)</button>
+        </div>
+        <div class="split-section-title" id="ratioSectionTitle">2. Chọn tỷ lệ hiển thị:</div>
+        <div class="split-ratio-pills" id="splitRatioPills">
+          <button class="ratio-pill active" data-ratio="0.5">50 : 50 (Cân bằng)</button>
+          <button class="ratio-pill" data-ratio="0.333">1/3 : 2/3 (33% : 67%)</button>
+          <button class="ratio-pill" data-ratio="0.667">2/3 : 1/3 (67% : 33%)</button>
+          <button class="ratio-pill" data-ratio="0.25">1/4 : 3/4 (25% : 75%)</button>
+          <button class="ratio-pill" data-ratio="0.75">3/4 : 1/4 (75% : 25%)</button>
+        </div>
+        <div class="split-section-title">3. Chọn ứng dụng cho từng vị trí:</div>
+        <div class="split-slots-grid" id="splitSlotsGrid">
+        </div>
+        <div class="split-actions-row">
+          <button class="split-apply-btn" id="btnApplySplit">
+            <svg viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" fill="currentColor"/></svg>
+            <span>Kích hoạt Chia Màn Hình Siêu Mượt</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="switcher-hint" id="switcherHint">Vuốt thẻ lên để đóng ứng dụng • Chọn thẻ để mở toàn màn hình</div>
+  </div>
+  <div class="split-divider-overlay" id="splitDividerOverlay">
+    <div class="split-divider-bar" id="splitDividerBar" title="Kéo ngang để thay đổi tỷ lệ mượt mà">
+      <div class="split-divider-handle"></div>
+    </div>
+    <div class="split-controls-pill" id="splitControlsPill">
+      <span class="split-ratio-badge" id="splitCurrentRatioText">50% | 50%</span>
+      <button class="split-quick-btn" data-ratio="0.33">1/3 : 2/3</button>
+      <button class="split-quick-btn active" data-ratio="0.5">1/2 : 1/2</button>
+      <button class="split-quick-btn" data-ratio="0.67">2/3 : 1/3</button>
+      <button class="split-exit-btn" id="btnExitSplit">Thoát chia màn hình</button>
+    </div>
+  </div>
+  <div class="instant-launch-overlay" id="instantLaunchOverlay">
+    <div class="instant-launch-img" id="instantLaunchImg"></div>
+    <div class="instant-launch-content">
+      <div class="instant-launch-icon-wrap" id="instantLaunchIconWrap">
+        <img class="instant-launch-icon" id="instantLaunchIcon" src="" alt="" decoding="async">
+      </div>
+      <span class="instant-launch-title" id="instantLaunchTitle">Đang mở...</span>
+      <div class="instant-launch-loader">
+        <div class="instant-loader-bar"></div>
+      </div>
+    </div>
+  </div>
+  <div class="folder-modal-overlay" id="folderModalOverlay">
+    <div class="folder-modal-backdrop" id="folderBackdrop"></div>
+    <div class="folder-modal-card">
+      <div class="folder-modal-header">
+        <h3 class="folder-modal-title" id="folderModalTitle">Nhóm ứng dụng</h3>
+        <button class="folder-modal-close" id="folderModalClose">✕</button>
+      </div>
+      <div class="folder-modal-grid" id="folderModalGrid">
+      </div>
+    </div>
+  </div>
+  <div class="desktop-modal-overlay" id="desktopModalOverlay">
+    <div class="desktop-modal-backdrop" id="desktopModalBackdrop"></div>
+    <div class="desktop-modal-window" id="desktopModalWindow">
+      <div class="desktop-modal-header">
+        <div class="desktop-header-left">
+          <div class="desktop-folder-icon-glow">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <div class="desktop-title-box">
+            <h2 class="desktop-modal-title">Bàn làm việc (Desktop)</h2>
+            <span class="desktop-files-count" id="desktopFilesCount">0 mục trên Desktop</span>
+          </div>
+        </div>
+        <div class="desktop-header-tools">
+          <div class="desktop-search-wrap">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="desktopSearchInput" placeholder="Tìm kiếm tệp & thư mục...">
+          </div>
+          <button class="desktop-tool-btn" id="btnDesktopNewFile" title="Tạo tệp văn bản mới">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            <span>+ Tệp mới</span>
+          </button>
+          <button class="desktop-tool-btn" id="btnDesktopNewFolder" title="Tạo thư mục mới">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+            <span>+ Thư mục</span>
+          </button>
+          <button class="desktop-tool-btn secondary" id="btnDesktopOpenExplorer" title="Mở trong File Explorer Windows">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            <span>Explorer</span>
+          </button>
+          <button class="desktop-close-btn" id="desktopModalClose" title="Đóng">✕</button>
+        </div>
+      </div>
+      <div class="desktop-files-scroller" id="desktopFilesScroller">
+        <div class="desktop-files-grid" id="desktopFilesGrid">
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="desktop-context-menu" id="desktopContextMenu">
+    <div class="ctx-item" id="ctxDesktopOpen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <span>Mở</span>
+    </div>
+    <div class="ctx-item" id="ctxDesktopShow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <span>Hiển thị trong Explorer</span>
+    </div>
+    <div class="ctx-item" id="ctxDesktopRename">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      <span>Đổi tên</span>
+    </div>
+    <div class="ctx-item danger" id="ctxDesktopDelete">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      <span>Xóa</span>
+    </div>
+  </div>
+  <div class="home-context-menu" id="homeContextMenu">
+    <div class="ctx-item" id="ctxHomeNewFile">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      <span>Tạo tệp mới trên Desktop</span>
+    </div>
+    <div class="ctx-item" id="ctxHomeNewFolder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+      <span>Tạo thư mục mới trên Desktop</span>
+    </div>
+    <div class="ctx-item" id="ctxHomeOpenDesktop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <span>Mở thư mục Desktop</span>
+    </div>
+    <div class="ctx-item-sep"></div>
+    <div class="ctx-item" id="ctxHomeRescan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      <span>Làm mới danh sách ứng dụng</span>
+    </div>
+    <div class="ctx-item" id="ctxHomeTaskMgr">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span>Trình quản lý tác vụ</span>
+    </div>
+  </div>
+  <div class="app-context-menu" id="appContextMenu">
+    <div class="ctx-item" id="ctxPinDock">
+      <svg viewBox="0 0 24 24"><path d="M12 2v8m0 0l-3-3m3 3l3-3m-9 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Ghim vào thanh Dock</span>
+    </div>
+    <div class="ctx-item" id="ctxOpenFull">
+      <svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Mở Toàn màn hình</span>
+    </div>
+  </div>
+  <div class="ios-anim-proxy" id="animProxy">
+    <div class="anim-proxy-content" id="animProxyContent">
+      <img class="anim-proxy-icon" id="animProxyIcon" src="" alt="" decoding="async">
+      <span class="anim-proxy-title" id="animProxyTitle"></span>
+      <div class="anim-proxy-loader" id="animProxyLoader">
+        <div class="anim-proxy-loader-bar"></div>
+      </div>
+      <img class="anim-proxy-snap" id="animProxySnap" src="" alt="" decoding="async">
+    </div>
+  </div>
+  <script>
+    (function () {
+      'use strict';
+      // 1. Giải mã ảnh Icon bất đồng bộ để khi load nhiều app không bị khựng khung hình
+      const setAsyncDecoding = (root) => {
+        if (!root || !root.querySelectorAll) return;
+        const imgs = root.tagName === 'IMG' ? [root] : root.querySelectorAll('img');
+        for (let i = 0; i < imgs.length; i++) {
+          if (imgs[i].getAttribute('decoding') !== 'async') {
+            imgs[i].setAttribute('decoding', 'async');
+          }
+        }
+      };
+      const initSafeObserver = () => {
+        const containers = [
+          document.getElementById('appsGrid'),
+          document.getElementById('dockShelf'),
+          document.getElementById('folderModalGrid'),
+          document.getElementById('desktopFilesGrid'),
+          document.getElementById('switcherDeck')
+        ].filter(Boolean);
+        const obs = new MutationObserver((mutations) => {
+          for (let i = 0; i < mutations.length; i++) {
+            const nodes = mutations[i].addedNodes;
+            for (let j = 0; j < nodes.length; j++) {
+              if (nodes[j].nodeType === 1) setAsyncDecoding(nodes[j]);
+            }
+          }
+        });
+        containers.forEach((c) => {
+          setAsyncDecoding(c);
+          obs.observe(c, { childList: true, subtree: true });
+        });
+        // 2. Khi đang cuộn danh sách ứng dụng, tạm tắt tính toán hover nặng trong 80ms
+        const appsGrid = document.getElementById('appsGrid');
+        if (appsGrid) {
+          let timer = null;
+          appsGrid.addEventListener('scroll', () => {
+            if (!document.body.classList.contains('aero-scrolling-active')) {
+              document.body.classList.add('aero-scrolling-active');
+            }
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+              document.body.classList.remove('aero-scrolling-active');
+            }, 80);
+          }, { passive: true });
+        }
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSafeObserver);
+      } else {
+        initSafeObserver();
+      }
+    })();
+  </script>
+  <script src="runtime-policy.js"></script>
+  <script src="ui-motion.js"></script>
+  <script src="app.js"></script>
+  <script src="controls-ui.js"></script>
+</body>
+</html>

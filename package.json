@@ -1,0 +1,39 @@
+{
+  "name": "aero-ios-launcher",
+  "version": "1.0.0",
+  "description": "iOS-like Shell and Launcher for Windows",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "scan": "node scanner.js",
+    "build-bridge": "g++ -O2 -static -static-libgcc -static-libstdc++ core_bridge.cpp -lgdiplus -lgdi32 -ldwmapi -lpsapi -lole32 -lshell32 -luuid -o core_bridge.exe",
+    "build-extractor": "g++ -O2 -municode icon_extractor.cpp -lshell32 -lole32 -lgdiplus -lgdi32 -luuid -o icon_extractor.exe",
+    "build-controls": "g++ -O2 -static -static-libgcc -static-libstdc++ controls.cpp -lwlanapi -lbthprops -lole32 -luuid -o controls.exe",
+    "build-desktop": "g++ -O2 -static -static-libgcc -static-libstdc++ -municode launch_on_desktop.cpp -o launch_on_desktop.exe",
+    "test": "node --test tests/*.test.js",
+    "test:electron": "node tests/run-electron.cjs"
+  },
+  "keywords": [
+    "windows",
+    "launcher",
+    "ios",
+    "shell"
+  ],
+  "author": "AeroIOS Team",
+  "license": "MIT",
+  "dependencies": {},
+  "build": {
+    "appId": "com.aeroios.launcher",
+    "productName": "AeroIOS-Launcher",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "AeroIOS-Launcher.exe"
+    },
+    "asar": false
+  }
+}
